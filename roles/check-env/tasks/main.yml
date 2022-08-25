@@ -1,0 +1,55 @@
+---
+# Variables affecting this role:
+#
+#  tools:
+#    - final_name: the name of the tool to check for
+#      completion: look for bash_completion or no
+#  clusters:
+#   just a simple list of clusters to check
+#
+# TODO: move clusters somewhere else than vars/ and perhaps make it richer
+#
+- name: Check for tools
+  file:
+    path: "{{ tools[item].final_name }}"
+    state: file
+  loop: "{{ tools.keys() | list }}"
+
+- name: Check for completion files
+  file:
+    path: /etc/bash_completion.d/{{ tools[item].completion_file }}
+    state: file
+  when: tools[item].completion
+  loop: "{{ tools.keys() | list }}"
+
+- name: Make sure kubeconfig is there on utility
+  delegate_to: utility.lab.example.com
+  file:
+    path: /home/lab/{{ item }}/auth/kubeconfig
+    state: file
+  loop: "{{ clusters }}"
+
+- name: Create a temp dir
+  file:
+    path: tmp
+    state: directory
+
+- name: Copy over the kubeconfig
+  delegate_to: utility.lab.example.com
+  fetch:
+    src: /home/lab/{{ item }}/auth/kubeconfig
+    dest: tmp/kubeconfig-{{ item }}
+    flat: yes
+  loop: "{{ clusters }}"
+
+- name: "We need python-kubernetes >= 12"
+  become: yes
+  pip:
+    name: kubernetes>=12.0.0
+
+- name: Verify cluster connectivity
+  kubernetes.core.k8s_cluster_info:
+    kubeconfig: tmp/kubeconfig-{{ item }}
+    validate_certs: no
+  loop: "{{ clusters }}"
+...

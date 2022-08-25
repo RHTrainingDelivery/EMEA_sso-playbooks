@@ -1,0 +1,9 @@
+---
+tools:
+  oc:
+    final_name: /usr/bin/oc
+    completion_file: oc
+    completion: yes
+clusters:
+  - ocp4
+...

@@ -1,0 +1,9 @@
+---
+- name: Pre-flight checks only.
+  hosts: workstation.lab.example.com
+  gather_subset: min
+  become: no
+  roles:
+    - role: check-env
+      tags: check
+...

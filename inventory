@@ -1,0 +1,9 @@
+workstation.lab.example.com ansible_connection=local
+utility.lab.example.com ansible_user=lab
+bastion.lab.example.com ansible_user=root
+
+# Example: override variables here.
+[all:vars]
+ocp_maj = "4.10"
+ocp_z = "4.10.3"
+
