@@ -6,4 +6,5 @@ tools:
     completion_file: oc
 clusters:
   - ocp4
+need_zip: yes
 ...
