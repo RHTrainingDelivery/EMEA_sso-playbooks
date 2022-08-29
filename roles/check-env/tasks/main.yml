@@ -2,12 +2,11 @@
 # Variables affecting this role:
 #
 #  tools:
-#    - final_name: the name of the tool to check for
+#    - final_name: the path to the tool to check for
 #      completion: look for bash_completion or no
+#      completion_file: the name of the bash completion file
 #  clusters:
 #   just a simple list of clusters to check
-#
-# TODO: move clusters somewhere else than vars/ and perhaps make it richer
 #
 - name: Check for tools
   file:
@@ -52,4 +51,5 @@
     kubeconfig: tmp/kubeconfig-{{ item }}
     validate_certs: no
   loop: "{{ clusters }}"
+
 ...
