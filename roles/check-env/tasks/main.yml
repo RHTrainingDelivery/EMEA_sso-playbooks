@@ -60,7 +60,7 @@
 
 - assert:
     that: sso_zip.stat.exists
-    fail_msg: "ERROR: RHSSO ZIP not downloaded!"
+    fail_msg: "ERROR: RHSSO ZIP not downloaded! Please go to section 'Before You Begin' in your book."
     success_msg: "OK: Found RHSSO ZIP file."
   when: need_zip
 ...
