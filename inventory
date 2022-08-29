@@ -6,4 +6,4 @@ bastion.lab.example.com ansible_user=root
 [all:vars]
 ocp_maj = "4.10"
 ocp_z = "4.10.3"
-
+sso_z = "7.6.0"
