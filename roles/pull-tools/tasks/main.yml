@@ -1,0 +1,101 @@
+---
+# Variables affecting this role:
+#
+#  tools:
+#    - final_name: the path to the tool to check for
+#      completion: generate bash_completion or no
+#      completion_file: the name of the bash completion file
+#      download: if no, just skip it
+#      download_filename: the name of the remote file to download
+#      archive_filename: the name of the file inside the archive to extract
+#
+# NOTE: Tools are downloaded from:
+#   - mirror.openshift.com for a specific ocp_z version, if only download_filename is set
+#   - arbitrary location, download_url + download_filename if both are set
+#
+- name: Check whether the tool archive is there
+  stat:
+    path: "{{ ansible_facts['user_dir'] }}/Downloads/{{ tools[item].download_filename }}"
+  when: tools[item].download_filename is defined
+  register: tool_exists
+  loop: "{{ tools.keys() | list }}"
+
+- name: Download the (OpenShift) tool if necessary
+  get_url:
+    dest: "{{ ansible_facts['user_dir'] }}/Downloads/{{ tools[item].download_filename }}"
+    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/{{ ocp_z }}/{{ tools[item].download_filename }}"
+  when:
+    - tools[item].download_url is not defined
+    - tools[item].download_filename is defined
+    - not tool_exists.results[offset].stat.exists
+  register: tool_downloaded
+  loop: "{{ tools.keys() | list }}"
+  loop_control:
+    index_var: offset
+
+- name: Extract the (OpenShift) tool if downloaded
+  become: yes
+  unarchive:
+    src: "{{ ansible_facts['user_dir'] }}/Downloads/{{ tools[item].download_filename }}"
+    remote_src: yes
+    include: "{{ tools[item].archive_filename }}"
+    dest: "{{ tools[item].final_name | dirname }}"
+    owner: root
+    group: root
+    mode: 0755
+  when:
+    - tools[item].download_filename is defined
+    - tools[item].archive_filename is defined
+    - tools[item].final_name is defined
+    - tool_downloaded.results[offset].changed
+  register: tool_extracted
+  loop: "{{ tools.keys() | list }}"
+  loop_control:
+    index_var: offset
+
+- name: Download the (arbitrary) tool if necessary
+  get_url:
+    dest: "{{ ansible_facts['user_dir'] }}/Downloads/{{ tools[item].download_filename }}"
+    url: "{{ tools[item].download_url }}/{{ tools[item].download_filename }}"
+  when:
+    - tools[item].download_url is defined
+    - tools[item].download_filename is defined
+    - not tool_exists.results[offset].stat.exists
+  register: tool_downloaded
+  loop: "{{ tools.keys() | list }}"
+  loop_control:
+    index_var: offset
+
+- name: Extract the (arbitrary) tool if downloaded
+  become: yes
+  unarchive:
+    src: "{{ ansible_facts['user_dir'] }}/Downloads/{{ tools[item].download_filename }}"
+    remote_src: yes
+    include: "{{ tools[item].archive_filename }}"
+    dest: "{{ tools[item].final_name | dirname }}"
+    owner: root
+    group: root
+    mode: 0755
+  when:
+    - tools[item].download_filename is defined
+    - tools[item].archive_filename is defined
+    - tools[item].final_name is defined
+    - tool_downloaded.results[offset].changed
+  register: tool_extracted
+  loop: "{{ tools.keys() | list }}"
+  loop_control:
+    index_var: offset
+
+- name: Generate completion if necessary
+  become: yes
+  shell:
+    cmd: "{{ tools[item].final_name }} completion bash > /etc/bash_completion.d/{{ tools[item].completion_file }}"
+  when:
+    - tools[item].completion
+    - tools[item].completion_file is defined
+    - tools[item].final_name is defined
+    - tool_extracted.results[offset].changed
+  loop: "{{ tools.keys() | list }}"
+  loop_control:
+    index_var: offset
+...

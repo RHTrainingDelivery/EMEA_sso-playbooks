@@ -1,0 +1,8 @@
+---
+# need the following variables somewhere in global vars collection:
+# 
+#  - ocp_z
+#  - tools
+#
+# consult the role tasks file for an explanation
+...

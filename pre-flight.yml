@@ -4,6 +4,8 @@
   gather_subset: min
   become: no
   roles:
+    - role: pull-tools
+      tags: prep
     - role: check-env
       tags: check
 ...
