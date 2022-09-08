@@ -56,11 +56,11 @@
   stat:
     path: "{{ ansible_facts['user_dir'] }}/Downloads/rh-sso-{{ sso_z }}-server-dist.zip"
   register: sso_zip
-  when: need_zip
+  when: need_sso_zip
 
 - assert:
     that: sso_zip.stat.exists
     fail_msg: "ERROR: RHSSO ZIP not downloaded! Please go to section 'Before You Begin' in your book."
     success_msg: "OK: Found RHSSO ZIP file."
-  when: need_zip
+  when: need_sso_zip
 ...

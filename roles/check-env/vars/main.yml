@@ -1,10 +1,8 @@
 ---
-tools:
-  oc:
-    final_name: /usr/bin/oc
-    completion: yes
-    completion_file: oc
-clusters:
-  - ocp4
-need_zip: yes
+# need the following variables somewhere in global vars collection:
+# 
+#  - tools
+#  - clusters
+#
+# consult the role tasks file for an explanation
 ...
