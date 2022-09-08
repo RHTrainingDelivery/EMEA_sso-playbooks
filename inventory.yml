@@ -1,0 +1,37 @@
+---
+# A simplistic inventory for the classroom VMs.
+all:
+  hosts:
+    workstation.lab.example.com:
+      ansible_connection: local
+    utility.lab.example.com:
+      ansible_user: lab
+    bastion.lab.example.com:
+      ansible_user: root
+  vars:
+    # OpenShift and RHSSO versions.
+    ocp_maj: "4.10"
+    ocp_z: "4.10.3"
+    sso_z: "7.6.0"
+
+    # These are the tools we need, some also need to be downloaded.
+    tools:
+      oc:
+        final_name: /usr/bin/oc
+        completion: yes
+        completion_file: oc
+      opm:
+        download: yes
+        download_filename: opm-linux-{{ ocp_z }}.tar.gz
+        archive_filename: opm
+        final_name: /usr/local/bin/opm
+        completion: yes
+        completion_file: opm
+
+    # The list of OpenShift clusters check-env will try to connect to.
+    clusters:
+      - ocp4
+
+    # Whether we will use a standalone RHSSO ZIP or not (only used in check-env).
+    need_sso_zip: yes
+...
