@@ -20,20 +20,22 @@ all:
         final_name: /usr/bin/oc
         completion: yes
         completion_file: oc
-      opm:
-        download: yes
-        download_filename: opm-linux-{{ ocp_z }}.tar.gz
-        archive_filename: opm
-        final_name: /usr/local/bin/opm
-        completion: yes
-        completion_file: opm
-      grpcurl:
-        download: yes
-        download_url: https://github.com/fullstorydev/grpcurl/releases/download/v1.8.7
-        download_filename: grpcurl_1.8.7_linux_x86_64.tar.gz
-        archive_filename: grpcurl
-        final_name: /usr/local/bin/grpcurl
-        completion: no
+
+    # Not really needed for class delivery, just for image prep.
+    #  opm:
+    #    download: yes
+    #    download_filename: opm-linux-{{ ocp_z }}.tar.gz
+    #    archive_filename: opm
+    #    final_name: /usr/local/bin/opm
+    #    completion: yes
+    #    completion_file: opm
+    #  grpcurl:
+    #    download: yes
+    #    download_url: https://github.com/fullstorydev/grpcurl/releases/download/v1.8.7
+    #    download_filename: grpcurl_1.8.7_linux_x86_64.tar.gz
+    #    archive_filename: grpcurl
+    #    final_name: /usr/local/bin/grpcurl
+    #    completion: no
 
     # The list of OpenShift clusters check-env will try to connect to.
     clusters:
