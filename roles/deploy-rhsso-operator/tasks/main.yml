@@ -97,6 +97,7 @@
   until:
     - sso_csv.resources is defined
     - (sso_csv.resources | length) > 0
+    - sso_csv.resources[0].status is defined
     - sso_csv.resources[0].status.phase == "Succeeded"
   retries: 30
   delay: 10
@@ -114,6 +115,7 @@
   until:
     - sso_pod.resources is defined
     - (sso_pod.resources | length) > 0
+    - sso_pod.resources[0].status is defined
     - sso_pod.resources[0].status.phase == "Running"
   retries: 30
   delay: 10

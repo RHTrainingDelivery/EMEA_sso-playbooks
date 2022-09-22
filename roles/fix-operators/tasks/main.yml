@@ -118,6 +118,8 @@
     name: rhsso-operator
   register: sso_mft
 
+# TODO: remove the catalogsource also if it's not referencing the secret, the
+#       pod is older than the secret, or its state is not "running"
 - name: Remove existing catalogsource from openshift-marketplace if rhsso-operator belongs to it
   k8s:
     kubeconfig: tmp/kubeconfig-ocp4
@@ -132,8 +134,7 @@
     - (sso_mft.resources | length) > 0
     - sso_mft.resources[0].status.catalogSource == "do280-catalog"
 
-# TODO: remove the catalogsource also if it's not referencing the secret, the
-#       pod is older than the secret, or its state is not "running"
+# TODO: Wait for the do280-catalog pod to disappear.
 
 - name: Make certain the "standard" catalog source is updated
   k8s:
@@ -187,8 +188,6 @@
     - sso_cat.resources[0].status.connectionState.lastObservedState == "READY"
   retries: 30
   delay: 10
-
-# TODO: wait for the do280-catalog and do280-sso pods to be back up as well?
 
 - name: Wait for the rhsso-operator packagemanifest to appear.
   k8s_info:

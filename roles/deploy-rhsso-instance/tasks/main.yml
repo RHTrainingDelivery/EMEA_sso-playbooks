@@ -66,6 +66,7 @@
   register: sso_cr
   until:
     - (sso_cr.resources | length) == 1
+    - sso_cr.resources[0].status is defined
     - sso_cr.resources[0].status.ready
     - sso_cr.resources[0].status.phase == "reconciling"
   retries: 30
