@@ -46,6 +46,13 @@
   pip:
     name: kubernetes>=12.0.0
 
+# XXX This won't do if you install it using pip.
+- name: We also need python38-jmespath
+  become: yes
+  package:
+    name: python38-jmespath
+    state: latest
+
 - name: Verify cluster connectivity
   kubernetes.core.k8s_cluster_info:
     kubeconfig: tmp/kubeconfig-{{ item }}
