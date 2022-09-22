@@ -1,0 +1,26 @@
+---
+# The users this role will create, along with their group memberships:
+pop_users:
+  - username: johndoe
+    password: redhat
+    firstname: John
+    lastname: Doe
+    groups:
+      - developer
+  - username: janedoe
+    password: redhat
+    firstname: Jane
+    lastname: Doe
+    groups:
+      - admin
+  - username: tomjones
+    password: redhat
+    firstname: Tom
+    lastname: Jones
+    groups:
+      - guest
+pop_groups:
+  - admin
+  - developer
+  - guest
+...

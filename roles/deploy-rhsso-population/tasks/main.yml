@@ -1,0 +1,160 @@
+---
+# Ensures that there are also users, groups, and roles in the test realm.
+- name: Check for the KeyCloak resource
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloak
+    namespace: rhsso
+    name: rhsso
+  register: sso_cr
+
+- assert:
+    that:
+      - (sso_cr.resources | length) == 1
+      - sso_cr.resources[0].status.ready
+      - sso_cr.resources[0].status.phase == "reconciling"
+    fail_msg: "ERROR: RHSSO instance is missing or not configured correctly."
+    success_msg: "OK: RHSSO instance is configured correctly."
+
+- name: Store RHSSO URL as a fact
+  set_fact:
+    sso_url: "{{ sso_cr.resources[0].status.externalURL }}"
+
+- name: Check for the realm resource
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakrealm
+    namespace: rhsso
+    name: sample-realm
+  register: sso_realm
+
+- assert:
+    that:
+      - (sso_realm.resources | length) == 1
+      - sso_realm.resources[0].spec.realm.id == "sample"
+      - sso_realm.resources[0].spec.realm.realm == "sample"
+      - sso_realm.resources[0].status.ready
+      - sso_realm.resources[0].status.phase == "reconciling"
+    fail_msg: "ERROR: RHSSO sample realm is missing or not configured correctly."
+    success_msg: "OK: RHSSO sample realm is configured correctly."
+
+# Authentication bits from here until we can get group list.
+- name: Read the SSO admin pass
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: secret
+    namespace: rhsso
+    name: "{{ sso_cr.resources[0].status.credentialSecret }}"
+  register: sso_secret
+
+- name: Store RHSSO admin pass as fact
+  set_fact:
+    sso_pass: "{{ sso_secret.resources[0].data.ADMIN_PASSWORD }}"
+
+- name: Get an auth token from RHSSO
+  uri:
+    method: POST
+    return_content: true
+    validate_certs: false
+    url: "{{ sso_url }}/auth/realms/master/protocol/openid-connect/token"
+    headers:
+      Accept: application/json
+    body: "client_id=admin-cli&username=admin&password={{ sso_pass | string | b64decode }}&grant_type=password"
+  register: sso_token_rsp
+
+- assert:
+    that: sso_token_rsp.json is defined and sso_token_rsp.json.access_token is defined
+    fail_msg: "ERROR: Failed to obtain authentication token from RHSSO."
+    success_msg: "OK: got authentication token."
+
+- name: Store the token as a fact
+  set_fact:
+    sso_token: "{{ sso_token_rsp.json.access_token }}"
+
+# Back to business as usual from here on.
+- name: Get existing group list
+  uri:
+    method: GET
+    return_content: true
+    validate_certs: false
+    url: "{{ sso_url }}/auth/admin/realms/sample/groups"
+    headers:
+      Authorization: Bearer {{ sso_token }}
+      Accept: application/json
+  register: sso_groups_raw
+  tags:
+    - groups
+
+- name: Store existing groups as a list
+  set_fact:
+    sso_groups: "{{ sso_groups_raw.json | items2dict(key_name='name', value_name='id') }}"
+  tags:
+    - groups
+
+- name: Create missing groups
+  uri:
+    method: POST
+    return_content: true
+    validate_certs: false
+    url: "{{ sso_url }}/auth/admin/realms/sample/groups"
+    headers:
+      Authorization: Bearer {{ sso_token }}
+      Accept: application/json
+      Content-Type: application/json
+    body_format: json
+    body: '{"name": "{{ item | string }}"}'
+    status_code:
+      - 200
+      - 201
+  loop: "{{ pop_groups }}"
+  when: item not in sso_groups.keys()
+  tags:
+    - groups
+
+# You need offline_access in realmRoles to be able to use OCP OIDC.
+- name: Make sure KeycloakUser resources exist
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakuser
+    namespace: rhsso
+    name: "user-{{ item.username }}"
+    definition:
+      metadata:
+        labels:
+          app: sso
+          realm: sample
+      spec:
+        realmSelector:
+          matchLabels:
+            app: sso
+            realm: sample
+        user:
+          username: "{{ item.username }}"
+          credentials:
+            - temporary: False
+              type: password
+              value: "{{ item.password }}"
+          firstName: "{{ item.firstname }}"
+          lastName: "{{ item.lastname }}"
+          email: "{{ item.username }}@example.com"
+          enabled: True
+          emailVerified: True
+          groups: "{{ item.groups | list }}"
+          realmRoles:
+            - offline_access
+  loop: "{{ pop_users }}"
+  tags:
+    - users
+
+# TODO: assign roles to groups?
+# TODO: remove any stale identities / openshift users if keycloakuser resources have been created?
+
+...

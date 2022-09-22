@@ -1,0 +1,82 @@
+---
+# Ensures the RHSSO instance (driven by a KeyCloak resource) is there.
+#
+- name: Check that the CSV is there and completed
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: clusterserviceversion
+    namespace: rhsso
+    name: rhsso-operator.7.6.0-opr-003
+  register: sso_csv
+
+- assert:
+    that:
+      - sso_csv.resources is defined
+      - (sso_csv.resources | length) == 1
+      - sso_csv.resources[0].status.phase == "Succeeded"
+    fail_msg: "ERROR: RHSSO operator not deployed or not registered correctly."
+    success_msg: "OK: RHSSO operator deployed correctly."
+
+- name: Check for the presence of stray KeyCloak resources
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloak
+    namespace: rhsso
+  register: sso_cr
+
+- assert:
+    that:
+      - (sso_cr.resources | length) == 1
+      - sso_cr.resources[0].metadata.name == "rhsso"
+    fail_msg: "ERROR: RHSSO instances other than the required one exist."
+    success_msg: "OK: Required RHSSO instance exists."
+  when:
+    - sso_cr.resources is defined
+    - (sso_cr.resources | length) > 0
+
+- name: Make sure there is a KeyCloak resource in the project
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloak
+    namespace: rhsso
+    name: rhsso
+    definition:
+      metadata:
+        labels:
+          app: sso
+      spec:
+        instances: 1
+        externalAccess:
+          enabled: true
+
+- name: Wait for the KeyCloak resource to show ready state
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloak
+    namespace: rhsso
+    name: rhsso
+  register: sso_cr
+  until:
+    - (sso_cr.resources | length) == 1
+    - sso_cr.resources[0].status.ready
+    - sso_cr.resources[0].status.phase == "reconciling"
+  retries: 30
+  delay: 10
+
+- name: Show some basic information about the instance.
+  pause:
+    prompt: |-
+      *******************************************************************************************************
+      KeyCloak instance rhsso is now available at {{ sso_cr.resources[0].status.externalURL }}
+      You can obtain the necessary credentials from secrets/{{ sso_cr.resources[0].status.credentialSecret }}
+      *******************************************************************************************************
+    seconds: 5
+...

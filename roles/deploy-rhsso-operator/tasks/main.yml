@@ -1,0 +1,120 @@
+---
+# Ensures all the operator artifacts are created and waits for CSV to succeed.
+#
+# NOTE: Do NOT test by checking for presence of API resources in the
+#       keycloak.org API group. They do not always get cleaned up.
+#
+- name: Check if the RHSSO CSV exists already
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: clusterserviceversion
+  register: all_csv
+
+- name: Find RHSSO CSV among all CSVs
+  set_fact:
+    rhsso_csv: "{{ (all_csv | community.general.json_query(\"resources[?metadata.name == 'rhsso-operator.7.6.0-opr-003']\")) }}"
+  when:
+    - all_csv.resources is defined
+    - (all_csv.resources | length) > 0
+
+- name: Get details about RHSSO CSV if found
+  set_fact:
+    rhsso_csv_ns: "{{ rhsso_csv[0] | community.general.json_query('metadata.namespace') }}"
+    rhsso_csv_name: "{{ rhsso_csv[0] | community.general.json_query('metadata.name') }}"
+  when:
+    - rhsso_csv is defined
+    - (rhsso_csv | length) > 0
+
+- assert:
+    that:
+      - ((rhsso_csv_ns | default("")) == "") or ((rhsso_csv_ns | default("")) == "rhsso")
+      - ((rhsso_csv_name | default("")) == "") or ((rhsso_csv_name | default("")) == "rhsso-operator.7.6.0-opr-003")
+    fail_msg: "ERROR: RHSSO CSV already present in {{ rhsso_csv_ns | default('NA') }}/{{ rhsso_csv_name | default('NA') }} - please remove manually!"
+    success_msg: "OK: RHSSO CSV not present or configured correctly."
+
+- name: Make sure the namespace is there
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: namespace
+    name: rhsso
+
+- name: Make sure it has a properly configured OperatorGroup
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1
+    kind: operatorgroup
+    namespace: rhsso
+    name: rhsso-operator-group
+    definition:
+      spec:
+        targetNamespaces:
+          - rhsso
+
+- name: Also make sure there is a subscription
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: subscription
+    namespace: rhsso
+    name: rhsso-subscription
+    definition:
+      spec:
+        source: do280-sso
+        sourceNamespace: openshift-marketplace
+        name: rhsso-operator
+        channel: stable
+        installPlanApproval: Automatic
+
+- name: Wait for installPlan to show up
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: installplan
+    namespace: rhsso
+  register: sso_ip
+  until:
+    - sso_ip.resources is defined
+    - (sso_ip.resources | length) > 0
+    - sso_ip.resources[0].spec.approved
+  retries: 12
+  delay: 10
+
+- name: Wait for CSV to show up and complete
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: clusterserviceversion
+    namespace: rhsso
+  register: sso_csv
+  until:
+    - sso_csv.resources is defined
+    - (sso_csv.resources | length) > 0
+    - sso_csv.resources[0].status.phase == "Succeeded"
+  retries: 30
+  delay: 10
+
+- name: Finally, wait for the pod
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: pod
+    namespace: rhsso
+    label_selectors:
+      - name = rhsso-operator
+  register: sso_pod
+  until:
+    - sso_pod.resources is defined
+    - (sso_pod.resources | length) > 0
+    - sso_pod.resources[0].status.phase == "Running"
+  retries: 30
+  delay: 10
+...

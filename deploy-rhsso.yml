@@ -1,0 +1,20 @@
+---
+- name: Deploy a RHSSO instance
+  hosts: workstation.lab.example.com
+  gather_subset: min
+  become: no
+  roles:
+    - role: deploy-rhsso-operator
+      tags: operator
+    - role: deploy-rhsso-instance
+      tags: keycloak
+    - role: deploy-rhsso-crs
+      tags:
+        - realm
+        - client
+    - role: deploy-rhsso-population
+      tags:
+        - users
+        - groups
+        - roles
+...

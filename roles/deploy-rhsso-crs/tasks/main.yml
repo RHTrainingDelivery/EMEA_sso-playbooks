@@ -1,0 +1,117 @@
+---
+# Ensures that the realm and a test client in it are created.
+- name: Check for the KeyCloak resource to see it shows ready state
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloak
+    namespace: rhsso
+    name: rhsso
+  register: sso_cr
+
+- assert:
+    that:
+      - (sso_cr.resources | length) == 1
+      - sso_cr.resources[0].status.ready
+      - sso_cr.resources[0].status.phase == "reconciling"
+    fail_msg: "ERROR: RHSSO instance is missing or not configured correctly."
+    success_msg: "OK: RHSSO instance is configured correctly."
+
+- name: Make sure the realm resource is correctly configured
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakrealm
+    namespace: rhsso
+    name: sample-realm
+    definition:
+      metadata:
+        labels:
+          app: sso
+          realm: sample
+      spec:
+        instanceSelector:
+          matchLabels:
+            app: sso
+        realm:
+          id: sample
+          realm: sample
+          enabled: True
+          displayName: "Sample Realm"
+  tags:
+    - realm
+
+- name: Wait for the realm resource to show ready state
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakrealm
+    namespace: rhsso
+    name: sample-realm
+  register: sso_realm
+  until:
+    - (sso_realm.resources | length) == 1
+    - sso_realm.resources[0].status is defined
+    - sso_realm.resources[0].status.ready
+    - sso_realm.resources[0].status.phase == "reconciling"
+  retries: 30
+  delay: 10
+
+- name: Also ensure there is a client in the sample realm
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakclient
+    namespace: rhsso
+    name: sample-client
+    definition:
+      metadata:
+        labels:
+          app: sso
+          realm: sample
+          client: sample
+      spec:
+        realmSelector:
+          matchLabels:
+            app: sso
+            realm: sample
+        client:
+          clientId: sample-client
+          defaultClientScopes:
+            - email
+            - offline_access
+            - profile
+            - roles
+          protocolMappers:
+            - name: groups
+              protocol: openid-connect
+              protocolMapper: oidc-usermodel-client-role-mapper
+              consentRequired: false
+          implicitFlowEnabled: False
+          standardFlowEnabled: True
+          redirectUris:
+            - https://oauth-openshift.apps.ocp4.example.com/*
+  tags:
+    - client
+
+- name: Wait for the client resource to show ready state
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakclient
+    namespace: rhsso
+    name: sample-client
+  register: sso_client
+  until:
+    - (sso_client.resources | length) == 1
+    - sso_client.resources[0].status is defined
+    - sso_client.resources[0].status.ready
+    - sso_client.resources[0].status.phase == "reconciling"
+  retries: 30
+  delay: 10
+...
