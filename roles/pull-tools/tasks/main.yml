@@ -13,6 +13,14 @@
 #   - mirror.openshift.com for a specific ocp_z version, if only download_filename is set
 #   - arbitrary location, download_url + download_filename if both are set
 #
+- name: Make sure Downloads exists
+  file:
+    path: "{{ ansible_facts['user_dir'] }}/Downloads"
+    state: directory
+    owner: student
+    group: student
+    mode: 0775
+
 - name: Check whether the tool archive is there
   stat:
     path: "{{ ansible_facts['user_dir'] }}/Downloads/{{ tools[item].download_filename }}"
