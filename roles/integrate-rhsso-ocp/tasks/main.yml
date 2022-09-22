@@ -1,0 +1,210 @@
+---
+# A number of checks to be performed, but ultimately modify oauth/cluster with
+# an additional identityProvider for OIDC.
+#
+- name: Check for the KeyCloak resource
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloak
+    namespace: rhsso
+    name: rhsso
+  register: sso_cr
+
+- assert:
+    that:
+      - (sso_cr.resources | length) == 1
+      - sso_cr.resources[0].spec.externalAccess.enabled
+      - sso_cr.resources[0].status.ready
+      - sso_cr.resources[0].status.phase == "reconciling"
+    fail_msg: "ERROR: RHSSO instance is missing or not configured correctly."
+    success_msg: "OK: RHSSO instance is configured correctly."
+
+- name: Store RHSSO URL as a fact
+  set_fact:
+    sso_url: "{{ sso_cr.resources[0].status.externalURL }}"
+
+- name: Check for the realm resource
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakrealm
+    namespace: rhsso
+    name: sample-realm
+  register: sso_realm
+
+- assert:
+    that:
+      - (sso_realm.resources | length) == 1
+      - sso_realm.resources[0].spec.realm.id == "sample"
+      - sso_realm.resources[0].spec.realm.realm == "sample"
+      - sso_realm.resources[0].spec.realm.enabled
+      - sso_realm.resources[0].status.ready
+      - sso_realm.resources[0].status.phase == "reconciling"
+    fail_msg: "ERROR: RHSSO sample realm is missing or not configured correctly."
+    success_msg: "OK: RHSSO sample realm is configured correctly."
+
+- name: Check that the client is configured correctly
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: keycloak.org/v1alpha1
+    kind: keycloakclient
+    namespace: rhsso
+    name: sample-client
+  register: sso_client
+
+- assert:
+    that:
+      - (sso_client.resources | length) == 1
+      - sso_client.resources[0].spec.client.clientId == "sample-client"
+      - '"offline_access" in sso_client.resources[0].spec.client.defaultClientScopes'
+      - sso_client.resources[0].status.ready
+      - sso_client.resources[0].status.phase == "reconciling"
+    fail_msg: "ERROR: RHSSO sample-client is missing or not configured correctly."
+    success_msg: "OK: RHSSO sample-client is configured correctly."
+
+- name: Store sample-client's secret name as a fact
+  set_fact:
+    sso_client_secret: "{{ sso_client.resources[0].status.secondaryResources.Secret[0] }}"
+
+- name: Read the sample-client's actual secret
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: secret
+    namespace: rhsso
+    name: "{{ sso_client_secret }}"
+  register: sso_client_secret
+
+- assert:
+    that:
+      - (sso_client_secret.resources | length) == 1
+      - sso_client_secret.resources[0].data.CLIENT_SECRET is defined
+    fail_msg: "ERROR: sample-client secret is missing."
+    success_msg: "OK: sample-client secret found."
+
+- name: Store the secret as a fact
+  set_fact:
+    sso_client_secret: "{{ sso_client_secret.resources[0].data.CLIENT_SECRET }}"
+
+- name: Check that the ingresscontroller's defaultCertificate is set
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operator.openshift.io/v1
+    kind: ingresscontroller
+    namespace: openshift-ingress-operator
+    name: default
+  register: ingress_ca
+
+- name: Get the router's default CA content
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: secret
+    namespace: openshift-config
+    name: "{{ ingress_ca.resources[0].spec.defaultCertificate.name }}"
+  register: ingress_ca
+
+- name: Store the CA cert as an actual fact
+  set_fact:
+    ingress_ca: "{{ ingress_ca.resources[0].data['tls.crt'] }}"
+
+- name: Check on oauth/cluster
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: config.openshift.io/v1
+    kind: oauth
+    name: cluster
+  register: cluster_auth
+
+- assert:
+    that:
+      - (cluster_auth.resources | length) == 1
+      - (cluster_auth.resources[0].spec.identityProviders | length) >= 1
+      - cluster_auth.resources[0].spec.identityProviders[0].type == "HTPasswd"
+    fail_msg: "ERROR: OpenShift cluster authentication is not configured correctly."
+    success_msg: "OK: OpenShift cluster authentication is configured correctly."
+
+- name: Make certain client secret exists in openshift-config
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: secret
+    namespace: openshift-config
+    name: sso-client-secret
+    definition:
+      metadata:
+        labels:
+          app: sso
+      type: Opaque
+      data:
+        clientSecret: "{{ sso_client_secret }}"
+
+- name: Make certain router CA CM exists in openshift-config
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: configmap
+    namespace: openshift-config
+    name: sso-ingress-ca
+    definition:
+      metadata:
+        labels:
+          app: sso
+      data:
+        ca.crt: "{{ ingress_ca | string | b64decode }}"
+
+- name: Figure out what to do with oauth/cluster - option 1
+  set_fact:
+    oauth_op: add
+    oauth_path: /spec/identityProviders/-
+  when: (cluster_auth.resources[0].spec.identityProviders | length) == 1
+
+- name: Figure out what to do with oauth/cluster - option 2
+  set_fact:
+    oauth_op: replace
+    oauth_path: /spec/identityProviders/1
+  when: (cluster_auth.resources[0].spec.identityProviders | length) == 2
+
+- name: Patch oauth/cluster
+  kubernetes.core.k8s_json_patch:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: config.openshift.io/v1
+    kind: oauth
+    name: cluster
+    patch:
+      - op: "{{ oauth_op }}"
+        path: "{{ oauth_path }}"
+        value:
+          name: oidc_sso
+          mappingMethod: claim 
+          type: OpenID
+          openID:
+            clientID: sample-client
+            clientSecret: 
+              name: sso-client-secret
+            ca:
+              name: sso-ingress-ca
+            claims: 
+              preferredUsername:
+              - preferred_username
+              name:
+              - name
+              email:
+              - email
+              groups:
+              - groups
+            issuer: "{{ sso_url }}/auth/realms/sample"
+
+# TODO: Check that all keycloakuser (or all users?) have offline_access realm role?
+...

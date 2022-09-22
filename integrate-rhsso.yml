@@ -1,0 +1,9 @@
+---
+- name: Integrate a configured RHSSO instance with OCP
+  hosts: workstation.lab.example.com
+  gather_subset: min
+  become: no
+  roles:
+    - role: integrate-rhsso-ocp
+      tags: integrate
+...
