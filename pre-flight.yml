@@ -8,4 +8,6 @@
       tags: prep
     - role: check-env
       tags: check
+    - role: fix-operators
+      tags: fix
 ...

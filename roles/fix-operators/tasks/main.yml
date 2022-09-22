@@ -1,0 +1,217 @@
+---
+# Fixes the openshift-marketplace catalog by recreating it from a new image minus rhsso-operator.
+# After that, adds a new catalogsource containing the correct rhsso-operator package.
+#
+# References:
+#   https://docs.openshift.com/container-platform/4.11/operators/admin/olm-restricted-networks.html
+#   https://docs.openshift.com/container-platform/4.11/operators/admin/olm-managing-custom-catalogs.html
+#   https://access.redhat.com/documentation/en-us/openshift_container_platform/4.9/html/cli_tools/opm-cli
+#
+# Prep Cheat-sheet:
+#
+# 1. Get rid of rhsso-operator in the do280-catalog:
+#
+#   - get a list of existing packages in the do280-catalog
+#
+#       oc port-forward do280-catalog-foobar 50051:50051
+#       grpcurl -plaintext localhost:50051 api.Registry/ListPackages > do280-packages.json
+#
+#   - remove rhsso-operator from do280-operator-catalog and push create a new image
+#
+#       opm index prune --from-index quay.io/redhattraining/do280-operator-catalog:v4.10 --tag quay.io/rhtuser/do280-catalog-nosso:v4.10 -p $(grep name do280-packages.json | sed 's/^.*name": "//; s/"$//' | grep -v rhsso-operator | tr '\n' ',' | sed 's/,$//')
+#
+#   - push the new image up (AUTHENTICATION!)
+#
+#       podman push quay.io/rhtuser/do280-catalog-nosso:v4.10
+#
+# 2. Get the latest version of rhsso-operator:
+#
+#   - take the original operator index (latest version) and prune it of everything but rhsso-operator
+#
+#       opm index prune --from-index registry.redhat.io/redhat/redhat-operator-index:v4.10 --tag quay.io/rhtuser/do280-sso-operator:v4.10 -p rhsso-operator
+#
+#   - push the image (AUTHENTICATION!)
+#
+#       podman push quay.io/rhtuser/do280-sso-operator:v4.10
+#
+# NOTE: quay.io robot account rhtuser+rhsso must have read access to the above two images.
+#         (creds in vars/main.yml)
+#
+# NOTE: Everything up until here has already been done and only needs to be done once.
+#
+# This is necessary immediately after lab create.
+- name: Wait for the marketplace-operator to be up
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: pod
+    namespace: openshift-marketplace
+    label_selectors:
+      - name=marketplace-operator
+  register: mktplc_pod
+  until:
+    - (mktplc_pod.resources | length) == 1
+    - mktplc_pod.resources[0].status.containerStatuses[0].ready
+  retries: 30
+  delay: 10
+
+- name: Get info about the SSO catalog secret
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: secret
+    namespace: openshift-marketplace
+    name: catalogsecret
+  register: sso_sec
+
+- name: Get rid of the secret if anything is wrong with it
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    state: absent
+    api_version: v1
+    kind: secret
+    namespace: openshift-marketplace
+    name: catalogsecret
+  register: sso_sec_removed
+  when:
+    - sso_sec.resources is defined
+    - (sso_sec.resources | length) == 1
+    - |-
+      (sso_sec.resources[0].data[".dockerconfigjson"] is not defined) or
+      (sso_sec.resources[0].type != "kubernetes.io/dockerconfigjson")
+
+#- name: Store the credentials as a fact
+#  set_fact:
+#    sso_secret: '{"auths": {"quay.io": {"username": "{{ robot_username }}", "password": "{{ robot_token }}", "auth": "{{ (robot_username + ":" + robot_token) | string | b64encode }}"}}}'
+
+# NOTE: dot-keys aren't welcome for some dumb reason. Must use imperative command here.
+- name: Create a secret to access the catalog image if not yet there
+  #k8s:
+  #  kubeconfig: tmp/kubeconfig-ocp4
+  #  validate_certs: no
+  #  state: present
+  #  api_version: v1
+  #  kind: secret
+  #  namespace: openshift-marketplace
+  #  name: catalogsecret
+  #  definition:
+  #    type: "kubernetes.io/dockerconfigjson"
+  #    data:
+  #      .dockerconfigjson: "{{ sso_secret | string | b64encode }}"
+  command: oc --kubeconfig=tmp/kubeconfig-ocp4 -n openshift-marketplace create secret docker-registry catalogsecret --docker-server=quay.io --docker-username={{ robot_username }} --docker-password={{ robot_token }}
+  when: |-
+    sso_sec_removed.changed or
+    (sso_sec.resources is not defined) or
+    ((sso_sec.resources | length) == 0) or
+    (sso_sec.resources[0].data[".dockerconfigjson"] is not defined)
+
+- name: Get info about the rhsso-operator
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: packages.operators.coreos.com/v1
+    kind: packagemanifest
+    namespace: openshift-marketplace
+    name: rhsso-operator
+  register: sso_mft
+
+- name: Remove existing catalogsource from openshift-marketplace if rhsso-operator belongs to it
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: catalogsource
+    namespace: openshift-marketplace
+    name: do280-catalog
+    state: absent
+  when:
+    - sso_mft.resources is defined
+    - (sso_mft.resources | length) > 0
+    - sso_mft.resources[0].status.catalogSource == "do280-catalog"
+
+# TODO: remove the catalogsource also if it's not referencing the secret, the
+#       pod is older than the secret, or its state is not "running"
+
+- name: Make certain the "standard" catalog source is updated
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: catalogsource
+    namespace: openshift-marketplace
+    name: do280-catalog
+    state: present
+    definition:
+      spec:
+        displayName: "do280 Operator Catalog"
+        image: "quay.io/rhtuser/do280-catalog-nosso:v4.10"
+        publisher: "Red Hat"
+        secrets:
+          - "catalogsecret"
+        sourceType: "grpc"
+
+- name: Ensure the RHSSO catalog source is there as well
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: catalogsource
+    namespace: openshift-marketplace
+    name: do280-sso
+    state: present
+    definition:
+      spec:
+        displayName: "do280 SSO Catalog"
+        image: "quay.io/rhtuser/do280-sso-operator:v4.10"
+        publisher: "Red Hat"
+        secrets:
+          - "catalogsecret"
+        sourceType: "grpc"
+
+# TODO: maybe both catalogsources?
+- name: Wait for the catalogsource to be ready.
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: catalogsource
+    namespace: openshift-marketplace
+    name: do280-sso
+  register: sso_cat
+  until:
+    - (sso_cat.resources | length) == 1
+    - sso_cat.resources[0].status is defined
+    - sso_cat.resources[0].status.connectionState.lastObservedState == "READY"
+  retries: 30
+  delay: 10
+
+# TODO: wait for the do280-catalog and do280-sso pods to be back up as well?
+
+- name: Wait for the rhsso-operator packagemanifest to appear.
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: packages.operators.coreos.com/v1
+    kind: packagemanifest
+    namespace: openshift-marketplace
+    name: rhsso-operator
+  register: sso_mft
+  until:
+    - (sso_mft.resources | length) == 1
+    - sso_mft.resources[0].status.catalogSource == "do280-sso"
+    - sso_mft.resources[0].status.packageName == "rhsso-operator"
+  retries: 30
+  delay: 10
+
+- assert:
+    that:
+      - sso_mft.resources is defined
+      - (sso_mft.resources | length) > 0
+      - sso_mft.resources[0].status.catalogSource == "do280-sso"
+      - '"rhsso-operator.7.6.0-opr-003" in (sso_mft.resources[0] | community.general.json_query("status.channels[*].currentCSV") | list)'
+    fail_msg: "ERROR: rhsso-operator package manifest not deployed correctly."
+    success_msg: "OK: rhsso-operator package manifest configured correctly."
+...
