@@ -1,4 +1,6 @@
 ---
 robot_username: rhtuser+rhsso
 robot_token: FWUDNUF8F33NNQQ2GI8GZ9VF64H5O20TH1P9G0Q78Y0VW0X9I4HTIA3CG1P7RX74
+catalog_sso_image: quay.io/rhtuser/do280-sso-operator:v4.10
+catalog_main_image: quay.io/rhtuser/do280-catalog-nosso:v4.10
 ...

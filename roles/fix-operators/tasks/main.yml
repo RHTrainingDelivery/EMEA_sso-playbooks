@@ -83,10 +83,6 @@
       (sso_sec.resources[0].data[".dockerconfigjson"] is not defined) or
       (sso_sec.resources[0].type != "kubernetes.io/dockerconfigjson")
 
-#- name: Store the credentials as a fact
-#  set_fact:
-#    sso_secret: '{"auths": {"quay.io": {"username": "{{ robot_username }}", "password": "{{ robot_token }}", "auth": "{{ (robot_username + ":" + robot_token) | string | b64encode }}"}}}'
-
 # NOTE: dot-keys aren't welcome for some dumb reason. Must use imperative command here.
 - name: Create a secret to access the catalog image if not yet there
   #k8s:
@@ -118,8 +114,17 @@
     name: rhsso-operator
   register: sso_mft
 
-# TODO: remove the catalogsource also if it's not referencing the secret, the
-#       pod is older than the secret, or its state is not "running"
+- name: Get info from the do280-catalog source
+  k8s_info:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: operators.coreos.com/v1alpha1
+    kind: catalogsource
+    namespace: openshift-marketplace
+    name: do280-catalog
+  register: op_catalog
+
+# TODO: remove the catalogsource also if the pod is older than the secret
 - name: Remove existing catalogsource from openshift-marketplace if rhsso-operator belongs to it
   k8s:
     kubeconfig: tmp/kubeconfig-ocp4
@@ -129,12 +134,16 @@
     namespace: openshift-marketplace
     name: do280-catalog
     state: absent
-  when:
-    - sso_mft.resources is defined
-    - (sso_mft.resources | length) > 0
-    - sso_mft.resources[0].status.catalogSource == "do280-catalog"
-
-# TODO: Wait for the do280-catalog pod to disappear.
+  when: |-
+    (sso_mft.resources is defined and
+      (sso_mft.resources | length) > 0 and
+      sso_mft.resources[0].status.catalogSource == "do280-catalog")
+    or
+      (op_catalog.resources is defined and
+      (op_catalog.resources | length) > 0 and
+      ((op_catalog.resources[0].spec.image != "{{ catalog_main_image }}") or
+        (op_catalog.resources[0].spec.secrets is not defined) or
+        (op_catalog.resources[0].spec.secrets != ["catalogsecret"])))
 
 - name: Make certain the "standard" catalog source is updated
   k8s:
@@ -148,11 +157,14 @@
     definition:
       spec:
         displayName: "do280 Operator Catalog"
-        image: "quay.io/rhtuser/do280-catalog-nosso:v4.10"
+        image: "{{ catalog_main_image }}"
         publisher: "Red Hat"
         secrets:
           - "catalogsecret"
         sourceType: "grpc"
+  register: op_catalog_modified
+
+- debug: var=op_catalog_modified
 
 - name: Ensure the RHSSO catalog source is there as well
   k8s:
@@ -166,13 +178,30 @@
     definition:
       spec:
         displayName: "do280 SSO Catalog"
-        image: "quay.io/rhtuser/do280-sso-operator:v4.10"
+        image: "{{ catalog_sso_image }}"
         publisher: "Red Hat"
         secrets:
           - "catalogsecret"
         sourceType: "grpc"
 
-# TODO: maybe both catalogsources?
+- name: Wait for things to settle down a bit for do280-catalog
+  pause:
+    seconds: 10
+    prompt: "Waiting for marketplace operator to settle down."
+  when: op_catalog_modified.changed
+
+- name: Delete the do280-catalog pod if CS was modified
+  k8s:
+    kubeconfig: tmp/kubeconfig-ocp4
+    validate_certs: no
+    api_version: v1
+    kind: pod
+    namespace: openshift-marketplace
+    label_selectors:
+      - olm.catalogSource=do280-catalog
+    state: absent
+  when: op_catalog_modified.changed
+
 - name: Wait for the catalogsource to be ready.
   k8s_info:
     kubeconfig: tmp/kubeconfig-ocp4
