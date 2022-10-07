@@ -141,7 +141,7 @@
     or
       (op_catalog.resources is defined and
       (op_catalog.resources | length) > 0 and
-      ((op_catalog.resources[0].spec.image != "{{ catalog_main_image }}") or
+      ((op_catalog.resources[0].spec.image != catalog_main_image) or
         (op_catalog.resources[0].spec.secrets is not defined) or
         (op_catalog.resources[0].spec.secrets != ["catalogsecret"])))
 
@@ -163,8 +163,6 @@
           - "catalogsecret"
         sourceType: "grpc"
   register: op_catalog_modified
-
-- debug: var=op_catalog_modified
 
 - name: Ensure the RHSSO catalog source is there as well
   k8s:
