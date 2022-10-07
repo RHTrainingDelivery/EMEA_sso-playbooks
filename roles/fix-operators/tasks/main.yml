@@ -125,7 +125,7 @@
   register: op_catalog
 
 # TODO: remove the catalogsource also if the pod is older than the secret
-- name: Remove existing catalogsource from openshift-marketplace if rhsso-operator belongs to it
+- name: Remove existing do280-catalog if rhsso-operator belongs to it or if not using correct image/secret
   k8s:
     kubeconfig: tmp/kubeconfig-ocp4
     validate_certs: no

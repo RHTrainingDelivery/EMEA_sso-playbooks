@@ -206,5 +206,7 @@
               - groups
             issuer: "{{ sso_url }}/auth/realms/sample"
 
+# TODO: Wait for clusteroperator/authentication to stop progressing.
+
 # TODO: Check that all keycloakuser (or all users?) have offline_access realm role?
 ...
