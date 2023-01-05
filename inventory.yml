@@ -9,10 +9,13 @@ all:
     bastion.lab.example.com:
       ansible_user: root
   vars:
-    # OpenShift and RHSSO versions.
+    # OpenShift versions.
     ocp_maj: "4.10"
     ocp_z: "4.10.3"
+    # Various RHSSO versions.
     sso_z: "7.6.0"
+    sso_p: "7.6.1"
+    sso_f: "4361"
 
     # These are the tools we need, some also need to be downloaded.
     tools:
@@ -43,4 +46,6 @@ all:
 
     # Whether we will use a standalone RHSSO ZIP or not (only used in check-env).
     need_sso_zip: yes
+    need_sso_patch: yes
+    need_sso_hotfix: yes
 ...

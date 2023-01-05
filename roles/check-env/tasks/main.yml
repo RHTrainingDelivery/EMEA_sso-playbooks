@@ -8,6 +8,10 @@
 #  clusters:
 #   just a simple list of clusters to check
 #
+#  need_sso_zip
+#  need_sso_patch
+#  need_sso_hotfix
+#
 - name: Check for tools
   file:
     path: "{{ tools[item].final_name }}"
@@ -63,11 +67,41 @@
   stat:
     path: "{{ ansible_facts['user_dir'] }}/Downloads/rh-sso-{{ sso_z }}-server-dist.zip"
   register: sso_zip
-  when: need_sso_zip
+  when: need_sso_zip|bool
 
 - assert:
     that: sso_zip.stat.exists
     fail_msg: "ERROR: RHSSO ZIP not downloaded! Please go to section 'Before You Begin' in your book."
     success_msg: "OK: Found RHSSO ZIP file."
-  when: need_sso_zip
+  when: need_sso_zip|bool
+
+- name: Check RHSSO patch is there
+  stat:
+    path: "{{ ansible_facts['user_dir'] }}/Downloads/rh-sso-{{ sso_p }}-patch.zip"
+  register: sso_patch
+  when: need_sso_zip|bool and need_sso_patch|bool
+
+- name: Check RHSSO hotfix is there
+  stat:
+    path: "{{ ansible_facts['user_dir'] }}/Downloads/rhsso-{{ sso_f }}.zip"
+  register: sso_hotfix
+  when: need_sso_zip|bool and need_sso_hotfix|bool
+
+- assert:
+    that: sso_zip.stat.exists
+    fail_msg: "ERROR: RHSSO ZIP not downloaded! Please go to section 'Before You Begin' in your book."
+    success_msg: "OK: Found RHSSO ZIP file."
+  when: need_sso_zip|bool
+
+- assert:
+    that: sso_patch.stat.exists
+    fail_msg: "ERROR: RHSSO patch not downloaded! Please go to section 'Before You Begin' in your book."
+    success_msg: "OK: Found RHSSO patch file."
+  when: need_sso_zip|bool and need_sso_patch|bool
+
+- assert:
+    that: sso_hotfix.stat.exists
+    fail_msg: "ERROR: RHSSO hotfix not downloaded! Please go to section 'Before You Begin' in your book."
+    success_msg: "OK: Found RHSSO hotfix file."
+  when: need_sso_zip|bool and need_sso_hotfix|bool
 ...

@@ -1,0 +1,10 @@
+---
+# Provide defaults to simplify conditionals.
+need_sso_zip: yes
+need_sso_patch: yes
+need_sso_hotfix: yes
+# These need to default to something, too.
+sso_z: "7.6.0"
+sso_p: "7.6.1"
+sso_f: "4361"
+...
