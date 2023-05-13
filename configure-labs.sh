@@ -7,7 +7,7 @@
 # - a realm called "sample"
 # - a client called "sample-client"
 #
-SSO_HOST_OCP=keycloak-rhsso.apps.ocp4.example.com
+SSO_HOST_OCP=keycloak-rhsso.apps.ocp4.example.com:443
 SSO_HOST_LOC=sso.lab.example.com:9443
 SSO_ADMIN_USER=admin
 SSO_ADMIN_PASS_LOC='jboss#1!'
@@ -114,7 +114,7 @@ echo OK
 
 echo
 echo "Proceeding with these settings:"
-echo " - SSO_HOST =       ${SSO_HOST}"
+echo " - SSO_HOST       = ${SSO_HOST}"
 echo " - SSO_ADMIN_USER = ${SSO_ADMIN_USER}"
 echo " - SSO_ADMIN_PASS = ${SSO_ADMIN_PASS}"
 echo
