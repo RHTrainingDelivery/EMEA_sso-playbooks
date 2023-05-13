@@ -1,17 +1,26 @@
 ---
-# Adds sso.lab.example.com and idm.lab.example.com as aliases for workstation to /etc/hosts
-# Must be executed on bastion.lab.example.com
+# Adds idm.lab.example.com as alias for workstation, and sso.lab.example.com as
+# alias for utility to /etc/hosts. Must be executed on bastion.lab.example.com
 #
-# Basically there is a line with workstation IP there...
+# Basically there are two line with workstation/utility IPs there...
 #
 #   172.25.250.9    workstation.lab.example.com workstation
+#   172.25.250.253  utility.lab.example.com utility
 #
 # And it must have the above hostnames added, theen dnsmasq restarted.
-- name: Make sure hostnames are in /etc/hosts
+- name: Make sure idm is in /etc/hosts
   ansible.builtin.lineinfile:
     path: /etc/hosts
     regexp: '^172.25.250.9\s+'
-    line: "172.25.250.9    workstation.lab.example.com workstation sso.lab.example.com idm.lab.example.com"
+    line: "172.25.250.9    workstation.lab.example.com workstation idm.lab.example.com"
+    state: present
+  notify:
+    - Restart dnsmasq
+- name: Make sure sso is in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^172.25.250.253\s+'
+    line: "172.25.250.253  utility.lab.example.com utility sso.lab.example.com"
     state: present
   notify:
     - Restart dnsmasq
