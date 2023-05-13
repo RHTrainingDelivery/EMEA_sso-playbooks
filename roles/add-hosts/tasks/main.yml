@@ -10,7 +10,7 @@
 - name: Make sure hostnames are in /etc/hosts
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: "^172.25.250.9\s+"
+    regexp: '^172.25.250.9\s+'
     line: "172.25.250.9    workstation.lab.example.com workstation sso.lab.example.com idm.lab.example.com"
     state: present
   notify:
