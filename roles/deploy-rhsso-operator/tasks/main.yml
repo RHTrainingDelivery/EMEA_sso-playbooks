@@ -4,6 +4,8 @@
 # NOTE: Do NOT test by checking for presence of API resources in the
 #       keycloak.org API group. They do not always get cleaned up.
 #
+# TODO: for some reason this does not detect a web-console-deployed RHSSO op.
+#
 - name: Check if the RHSSO CSV exists already
   k8s_info:
     kubeconfig: tmp/kubeconfig-ocp4
